@@ -25,6 +25,7 @@ export interface Bike {
   newExpiryDate: string;
   pendingRemarks: PendingRemarks;
   status: BikeStatus;
+  extraFields?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
 }
