@@ -12,6 +12,7 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Bike, BikeFormData } from '@/types/bike';
@@ -102,6 +103,17 @@ export async function markFinished(
 
 export async function deleteBike(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+export async function deleteAllBikes(): Promise<number> {
+  const snap = await getDocs(collection(db, COLLECTION));
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += 500) {
+    const batch = writeBatch(db);
+    docs.slice(i, i + 500).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  return docs.length;
 }
 
 export interface AuthorizedEmail {

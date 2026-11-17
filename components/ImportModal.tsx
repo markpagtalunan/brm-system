@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { X, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { addBike } from '@/lib/bikes';
+import { addBike, deleteAllBikes } from '@/lib/bikes';
 import { BikeFormData } from '@/types/bike';
 import { cn } from '@/lib/utils';
 
@@ -80,6 +80,8 @@ export function ImportModal({ open, onClose, onDone }: ImportModalProps) {
   const [importing, setImporting] = useState(false);
   const [done, setDone] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [replaceStep, setReplaceStep] = useState<'idle' | 'deleting' | 'importing'>('idle');
+  const [deletedCount, setDeletedCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!open) return null;
@@ -119,12 +121,10 @@ export function ImportModal({ open, onClose, onDone }: ImportModalProps) {
     reader.readAsArrayBuffer(file);
   };
 
-  const handleImport = async () => {
-    setImporting(true);
-    setResults([]);
+  const runImport = async (rows: BikeFormData[]) => {
     const res: RowResult[] = [];
-    for (let i = 0; i < preview.length; i++) {
-      const bike = preview[i];
+    for (let i = 0; i < rows.length; i++) {
+      const bike = rows[i];
       try {
         await addBike(bike);
         res.push({ row: i + 1, bikeNumber: bike.bikeNumber, status: 'ok' });
@@ -133,6 +133,25 @@ export function ImportModal({ open, onClose, onDone }: ImportModalProps) {
       }
       setResults([...res]);
     }
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    setResults([]);
+    await runImport(preview);
+    setImporting(false);
+    setDone(true);
+  };
+
+  const handleReplaceAll = async () => {
+    setImporting(true);
+    setResults([]);
+    setReplaceStep('deleting');
+    const count = await deleteAllBikes();
+    setDeletedCount(count);
+    setReplaceStep('importing');
+    await runImport(preview);
+    setReplaceStep('idle');
     setImporting(false);
     setDone(true);
   };
@@ -251,13 +270,25 @@ export function ImportModal({ open, onClose, onDone }: ImportModalProps) {
               {/* Progress */}
               {importing && (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                    Importing {results.length} of {preview.length}...
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(results.length / preview.length) * 100}%` }} />
-                  </div>
+                  {replaceStep === 'deleting' && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                      Deleting existing bikes...
+                    </div>
+                  )}
+                  {(replaceStep === 'importing' || replaceStep === 'idle') && (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        {replaceStep === 'importing' && deletedCount > 0
+                          ? `Deleted ${deletedCount} — importing ${results.length} of ${preview.length}...`
+                          : `Importing ${results.length} of ${preview.length}...`}
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(results.length / preview.length) * 100}%` }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -286,13 +317,22 @@ export function ImportModal({ open, onClose, onDone }: ImportModalProps) {
               {done ? 'Close' : 'Cancel'}
             </button>
             {!done && preview.length > 0 && (
-              <button
-                onClick={handleImport}
-                disabled={importing}
-                className="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
-              >
-                {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : `Import ${preview.length} bikes`}
-              </button>
+              <>
+                <button
+                  onClick={handleImport}
+                  disabled={importing}
+                  className="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  {importing && replaceStep === 'idle' ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : `Add ${preview.length} bikes`}
+                </button>
+                <button
+                  onClick={handleReplaceAll}
+                  disabled={importing}
+                  className="px-5 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  {importing && replaceStep !== 'idle' ? <><Loader2 className="w-4 h-4 animate-spin" /> {replaceStep === 'deleting' ? 'Deleting...' : 'Importing...'}</> : `Replace All (${preview.length} bikes)`}
+                </button>
+              </>
             )}
           </div>
         </div>
