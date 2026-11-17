@@ -27,7 +27,7 @@ export default function Home() {
   const [showImport, setShowImport] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
 
-  const { columns, updateColumns } = useColumnConfig();
+  const { columns, updateColumns } = useColumnConfig(authUser !== undefined && authUser !== null);
 
   // Listen to Firebase auth state
   useEffect(() => {

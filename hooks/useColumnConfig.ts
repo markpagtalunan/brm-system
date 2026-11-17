@@ -6,11 +6,12 @@ import { db } from '@/lib/firebase';
 import { ColumnConfig } from '@/types/columnConfig';
 import { DEFAULT_COLUMNS, saveColumnConfig } from '@/lib/columnConfig';
 
-export function useColumnConfig() {
+export function useColumnConfig(authReady = false) {
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!authReady) return;
     async function load() {
       const ref = doc(db, 'settings', 'columns');
       const snap = await getDoc(ref);
@@ -23,7 +24,7 @@ export function useColumnConfig() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [authReady]);
 
   const updateColumns = useCallback(async (cols: ColumnConfig[]) => {
     await saveColumnConfig(cols);
