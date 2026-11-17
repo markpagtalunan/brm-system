@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, Trash2, SlidersHorizontal, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Trash2, SlidersHorizontal, ChevronUp, ChevronDown, ChevronsUpDown, Settings2 } from 'lucide-react';
 import { Bike } from '@/types/bike';
+import { ColumnConfig } from '@/types/columnConfig';
 import { formatDate, cn } from '@/lib/utils';
+import { renderCell } from '@/lib/renderCell';
+import { ColumnManagerModal } from './ColumnManagerModal';
 
 interface FinishedProps {
   bikes: Bike[];
+  columns: ColumnConfig[];
+  isAdmin: boolean;
   onDelete: (id: string) => Promise<void>;
+  onUpdateColumns: (cols: ColumnConfig[]) => Promise<void>;
 }
 
 const CATEGORIES = ['DXB1', 'DXB2', 'SHJ', 'AJM', 'RAK', 'FUJ', 'UAQ'];
@@ -19,28 +25,8 @@ const FILTER_OPTIONS = [
   { key: 'dateRange', label: 'Date Finished' },
 ];
 
-type SortKey = keyof Bike | null;
+type SortKey = string | null;
 type SortDir = 'asc' | 'desc';
-
-type Column = { label: string; sortKey: SortKey; className?: string };
-
-const COLUMNS: Column[] = [
-  { label: 'SRL', sortKey: 'srl', className: 'w-14' },
-  { label: 'Passing Date', sortKey: 'passingDate' },
-  { label: 'Bike No.', sortKey: 'bikeNumber' },
-  { label: 'Category', sortKey: 'category' },
-  { label: 'Full Reg', sortKey: 'fullReg' },
-  { label: 'New Number', sortKey: 'newNumber' },
-  { label: 'Chassis No.', sortKey: 'chassisNo' },
-  { label: 'TC No.', sortKey: 'tcNo' },
-  { label: 'Year', sortKey: 'year' },
-  { label: 'Expiry Date', sortKey: 'registrationExpiryDate' },
-  { label: 'Renewal Remarks', sortKey: 'renewalRemarks' },
-  { label: 'Sub Status', sortKey: 'subStatus' },
-  { label: 'Date Finished', sortKey: 'dateFinished' },
-  { label: 'New Expiry Date', sortKey: 'newExpiryDate' },
-  { label: 'Actions', sortKey: null },
-];
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) return <ChevronsUpDown className="w-3 h-3 text-gray-400 inline ml-1 opacity-50" />;
@@ -60,7 +46,7 @@ const DATE_RANGE_OPTIONS = [
 
 const PER_PAGE = 10;
 
-export function Finished({ bikes, onDelete }: FinishedProps) {
+export function Finished({ bikes, columns, isAdmin, onDelete, onUpdateColumns }: FinishedProps) {
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
   const [filterSubStatus, setFilterSubStatus] = useState('');
@@ -71,6 +57,7 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dateFinished');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
+  const [showColumnManager, setShowColumnManager] = useState(false);
 
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +70,11 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
     if (showFilterPanel) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showFilterPanel]);
+
+  const displayColumns = useMemo(
+    () => columns.filter((c) => c.showInFinished).sort((a, b) => a.order - b.order),
+    [columns]
+  );
 
   const years = useMemo(
     () => [...new Set(bikes.map((b) => b.year).filter(Boolean))].sort((a, b) => b - a),
@@ -137,8 +129,12 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
   const sorted = useMemo(() => {
     if (!sortKey) return filtered;
     return [...filtered].sort((a, b) => {
-      const av = a[sortKey as keyof Bike];
-      const bv = b[sortKey as keyof Bike];
+      const av = sortKey in a
+        ? a[sortKey as keyof Bike]
+        : a.extraFields?.[sortKey] ?? '';
+      const bv = sortKey in b
+        ? b[sortKey as keyof Bike]
+        : b.extraFields?.[sortKey] ?? '';
       if (typeof av === 'number' && typeof bv === 'number')
         return sortDir === 'asc' ? av - bv : bv - av;
       const as = String(av ?? '').toLowerCase();
@@ -151,6 +147,8 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
   const paginated = sorted.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const activeFilterCount = [filterCat, filterSubStatus, filterYear, filterDateRange].filter(Boolean).length;
+
+  const sortedByLabel = displayColumns.find((c) => c.fieldKey === sortKey)?.label;
 
   return (
     <div className="p-6">
@@ -259,6 +257,17 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
             )}
           </div>
 
+          {/* Manage columns (admin only) */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowColumnManager(true)}
+              className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+              title="Manage columns"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          )}
+
           <div className="ml-auto text-sm text-gray-500">
             <span className="font-semibold text-green-600">{bikes.length}</span> completed
           </div>
@@ -271,9 +280,9 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
           {filtered.length} record{filtered.length !== 1 ? 's' : ''} found
           {activeFilterCount > 0 && <span className="text-blue-500"> (filtered)</span>}
         </span>
-        {sortKey && (
+        {sortKey && sortedByLabel && (
           <span className="text-xs text-gray-400">
-            Sorted by <span className="text-gray-600 font-medium">{COLUMNS.find(c => c.sortKey === sortKey)?.label}</span> {sortDir === 'asc' ? '↑' : '↓'}
+            Sorted by <span className="text-gray-600 font-medium">{sortedByLabel}</span> {sortDir === 'asc' ? '↑' : '↓'}
           </span>
         )}
       </div>
@@ -284,62 +293,36 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
-                {COLUMNS.map((col) => (
+                {displayColumns.map((col) => (
                   <th
-                    key={col.label}
-                    onClick={() => col.sortKey && handleSort(col.sortKey)}
-                    className={cn(
-                      'text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none',
-                      col.sortKey ? 'cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors' : '',
-                      col.className
-                    )}
+                    key={col.id}
+                    onClick={() => handleSort(col.fieldKey)}
+                    className="text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors"
                   >
                     {col.label}
-                    {col.sortKey && <SortIcon active={sortKey === col.sortKey} dir={sortDir} />}
+                    <SortIcon active={sortKey === col.fieldKey} dir={sortDir} />
                   </th>
                 ))}
+                <th className="text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={displayColumns.length + 1} className="px-4 py-10 text-center text-gray-400">
                     No finished records found
                   </td>
                 </tr>
               ) : (
                 paginated.map((bike) => (
                   <tr key={bike.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 text-xs">{bike.srl}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(bike.passingDate)}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">{bike.bikeNumber}</td>
-                    <td className="px-4 py-3">
-                      <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded">
-                        {bike.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 font-mono text-xs">{bike.fullReg}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{bike.newNumber || '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 font-mono text-xs" title={bike.chassisNo}>
-                      {bike.chassisNo?.slice(0, 14)}{(bike.chassisNo?.length ?? 0) > 14 ? '…' : ''}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 font-mono text-xs">{bike.tcNo || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{bike.year}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs line-through whitespace-nowrap">
-                      {formatDate(bike.registrationExpiryDate)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs max-w-32 truncate" title={bike.renewalRemarks}>
-                      {bike.renewalRemarks || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{bike.subStatus || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                      {bike.dateFinished ? formatDate(bike.dateFinished) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-green-600 font-medium text-xs">
-                        {bike.newExpiryDate ? formatDate(bike.newExpiryDate) : '—'}
-                      </span>
-                    </td>
+                    {displayColumns.map((col) => (
+                      <td key={col.id} className="px-4 py-3">
+                        {renderCell(col, bike, 'finished')}
+                      </td>
+                    ))}
                     <td className="px-4 py-3">
                       <button
                         onClick={() => { if (confirm('Delete this record?')) onDelete(bike.id!); }}
@@ -365,6 +348,13 @@ export function Finished({ bikes, onDelete }: FinishedProps) {
           </div>
         )}
       </div>
+
+      <ColumnManagerModal
+        open={showColumnManager}
+        columns={columns}
+        onClose={() => setShowColumnManager(false)}
+        onSave={async (cols) => { await onUpdateColumns(cols); setShowColumnManager(false); }}
+      />
     </div>
   );
 }
