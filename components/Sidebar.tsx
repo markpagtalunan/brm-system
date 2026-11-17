@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, ClipboardList, CheckCircle2, Upload, Shield, LogOut } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, CheckCircle2, Upload, Shield, LogOut, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { signOut } from '@/lib/auth';
 import { User } from 'firebase/auth';
@@ -13,10 +13,11 @@ interface SidebarProps {
   trackerCount: number;
   finishedCount: number;
   onImport: () => void;
+  onInvite: () => void;
   user: User;
 }
 
-export function Sidebar({ activePage, onNavigate, trackerCount, finishedCount, onImport, user }: SidebarProps) {
+export function Sidebar({ activePage, onNavigate, trackerCount, finishedCount, onImport, onInvite, user }: SidebarProps) {
   const navItems = [
     { id: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'tracker' as Page, label: 'Tracker', icon: ClipboardList, badge: trackerCount, badgeColor: 'bg-orange-100 text-orange-600' },
@@ -70,6 +71,10 @@ export function Sidebar({ activePage, onNavigate, trackerCount, finishedCount, o
         <button onClick={onImport} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-md text-sm text-gray-600 hover:bg-gray-50 font-medium transition-colors">
           <Upload className="w-4 h-4 flex-shrink-0" />
           <span>Import Excel</span>
+        </button>
+        <button onClick={onInvite} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-md text-sm text-gray-600 hover:bg-gray-50 font-medium transition-colors">
+          <UserPlus className="w-4 h-4 flex-shrink-0" />
+          <span>Manage Access</span>
         </button>
       </nav>
 

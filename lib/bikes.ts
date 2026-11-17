@@ -5,6 +5,8 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
+  getDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -13,6 +15,8 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Bike, BikeFormData } from '@/types/bike';
+
+const AUTHORIZED_EMAILS_COLLECTION = 'authorizedEmails';
 
 const COLLECTION = 'bikes';
 
@@ -95,6 +99,36 @@ export async function markFinished(
 
 export async function deleteBike(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+export interface AuthorizedEmail {
+  email: string;
+  addedAt: string;
+  addedBy: string;
+}
+
+export async function getAuthorizedEmails(): Promise<AuthorizedEmail[]> {
+  const snap = await getDocs(collection(db, AUTHORIZED_EMAILS_COLLECTION));
+  return snap.docs.map((d) => ({
+    email: d.id,
+    addedAt: d.data().addedAt ?? '',
+    addedBy: d.data().addedBy ?? '',
+  }));
+}
+
+export async function addAuthorizedEmail(email: string, addedBy: string): Promise<void> {
+  const ref = doc(db, AUTHORIZED_EMAILS_COLLECTION, email.toLowerCase().trim());
+  await setDoc(ref, { addedAt: new Date().toISOString(), addedBy });
+}
+
+export async function removeAuthorizedEmail(email: string): Promise<void> {
+  await deleteDoc(doc(db, AUTHORIZED_EMAILS_COLLECTION, email.toLowerCase().trim()));
+}
+
+export async function isEmailInFirestore(email: string): Promise<boolean> {
+  const ref = doc(db, AUTHORIZED_EMAILS_COLLECTION, email.toLowerCase().trim());
+  const snap = await getDoc(ref);
+  return snap.exists();
 }
 
 export function getDaysUntilExpiry(expiryDate: string): number {

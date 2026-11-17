@@ -7,6 +7,7 @@ import { Dashboard } from '@/components/Dashboard';
 import { Tracker } from '@/components/Tracker';
 import { Finished } from '@/components/Finished';
 import { ImportModal } from '@/components/ImportModal';
+import { InviteModal } from '@/components/InviteModal';
 import { LoginPage } from '@/components/LoginPage';
 import { getBikes, addBike, updateBike, deleteBike, markFinished } from '@/lib/bikes';
 import { onAuthChange } from '@/lib/auth';
@@ -21,6 +22,7 @@ export default function Home() {
   const [finishedBikes, setFinishedBikes] = useState<Bike[]>([]);
   const [bikesLoading, setBikesLoading] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   // Listen to Firebase auth state
   useEffect(() => {
@@ -98,6 +100,7 @@ export default function Home() {
         trackerCount={trackerBikes.length}
         finishedCount={finishedBikes.length}
         onImport={() => setShowImport(true)}
+        onInvite={() => setShowInvite(true)}
         user={authUser}
       />
       <main className="flex-1 overflow-y-auto">
@@ -122,6 +125,11 @@ export default function Home() {
         open={showImport}
         onClose={() => setShowImport(false)}
         onDone={() => { setShowImport(false); loadBikes(); }}
+      />
+      <InviteModal
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        currentUser={authUser}
       />
     </div>
   );

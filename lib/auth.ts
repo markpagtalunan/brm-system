@@ -6,8 +6,8 @@ import {
   User,
 } from 'firebase/auth';
 import { auth } from './firebase';
+import { isEmailInFirestore } from './bikes';
 
-// Allowed: any @gmail.com account + specific work emails
 const ALLOWED_EMAILS = ['fleet2@easylease.ae'];
 const ALLOWED_DOMAINS = ['gmail.com'];
 
@@ -15,6 +15,11 @@ export function isEmailAllowed(email: string): boolean {
   if (ALLOWED_EMAILS.includes(email.toLowerCase())) return true;
   const domain = email.split('@')[1]?.toLowerCase();
   return ALLOWED_DOMAINS.includes(domain);
+}
+
+async function isEmailAuthorized(email: string): Promise<boolean> {
+  if (isEmailAllowed(email)) return true;
+  return isEmailInFirestore(email);
 }
 
 export async function signInWithGoogle(): Promise<{ user: User | null; error: string | null }> {
@@ -25,7 +30,7 @@ export async function signInWithGoogle(): Promise<{ user: User | null; error: st
     const result = await signInWithPopup(auth, provider);
     const email = result.user.email ?? '';
 
-    if (!isEmailAllowed(email)) {
+    if (!(await isEmailAuthorized(email))) {
       await firebaseSignOut(auth);
       return {
         user: null,
