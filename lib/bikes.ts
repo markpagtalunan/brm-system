@@ -49,6 +49,7 @@ function fromFirestore(id: string, data: Record<string, unknown>): Bike {
     newExpiryDate: toStr(data.newExpiryDate),
     pendingRemarks: (data.pendingRemarks as Bike['pendingRemarks']) ?? '',
     status: (data.status as Bike['status']) ?? 'tracker',
+    extraFields: (data.extraFields as Record<string, string>) ?? {},
     createdAt: toStr(data.createdAt),
     updatedAt: toStr(data.updatedAt),
   };
@@ -85,7 +86,8 @@ export async function markFinished(
   id: string,
   dateFinished: string,
   newExpiryDate: string,
-  renewalRemarks: string
+  renewalRemarks: string,
+  extraFields?: Record<string, string>
 ): Promise<void> {
   const ref = doc(db, COLLECTION, id);
   await updateDoc(ref, {
@@ -93,6 +95,7 @@ export async function markFinished(
     dateFinished,
     newExpiryDate,
     renewalRemarks,
+    ...(extraFields ? { extraFields } : {}),
     updatedAt: serverTimestamp(),
   });
 }
