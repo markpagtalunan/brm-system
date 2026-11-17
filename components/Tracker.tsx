@@ -1,19 +1,25 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Plus, Search, Pencil, CheckCircle2, Trash2, SlidersHorizontal, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Plus, Search, Pencil, CheckCircle2, Trash2, SlidersHorizontal, ChevronUp, ChevronDown, ChevronsUpDown, Settings2 } from 'lucide-react';
 import { getDaysUntilExpiry, getExpiryStatus } from '@/lib/bikes';
 import { Bike, BikeFormData } from '@/types/bike';
+import { ColumnConfig } from '@/types/columnConfig';
 import { formatDate, cn } from '@/lib/utils';
+import { renderCell } from '@/lib/renderCell';
 import { AddBikeModal } from './AddBikeModal';
 import { MarkFinishedModal } from './MarkFinishedModal';
+import { ColumnManagerModal } from './ColumnManagerModal';
 
 interface TrackerProps {
   bikes: Bike[];
+  columns: ColumnConfig[];
+  isAdmin: boolean;
   onAdd: (data: BikeFormData) => Promise<void>;
   onEdit: (id: string, data: Partial<BikeFormData>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onMarkFinished: (id: string, dateFinished: string, newExpiry: string, remarks: string) => Promise<void>;
+  onMarkFinished: (id: string, dateFinished: string, newExpiry: string, remarks: string, extraFields?: Record<string, string>) => Promise<void>;
+  onUpdateColumns: (cols: ColumnConfig[]) => Promise<void>;
 }
 
 const CATEGORIES = ['DXB1', 'DXB2', 'SHJ', 'AJM', 'RAK', 'FUJ', 'UAQ'];
@@ -35,27 +41,8 @@ const FILTER_OPTIONS = [
   { key: 'year', label: 'Year' },
 ];
 
-type SortKey = keyof Bike | null;
+type SortKey = string | null;
 type SortDir = 'asc' | 'desc';
-
-type Column = { label: string; sortKey: SortKey; className?: string };
-
-const COLUMNS: Column[] = [
-  { label: 'SRL', sortKey: 'srl', className: 'w-14' },
-  { label: 'Passing Date', sortKey: 'passingDate' },
-  { label: 'Bike No.', sortKey: 'bikeNumber' },
-  { label: 'Category', sortKey: 'category' },
-  { label: 'Full Reg', sortKey: 'fullReg' },
-  { label: 'New Number', sortKey: 'newNumber' },
-  { label: 'Chassis No.', sortKey: 'chassisNo' },
-  { label: 'TC No.', sortKey: 'tcNo' },
-  { label: 'Year', sortKey: 'year' },
-  { label: 'Expiry Date', sortKey: 'registrationExpiryDate' },
-  { label: 'Renewal Remarks', sortKey: 'renewalRemarks' },
-  { label: 'Sub Status', sortKey: 'subStatus' },
-  { label: 'Pending Remarks', sortKey: 'pendingRemarks' },
-  { label: 'Actions', sortKey: null },
-];
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) return <ChevronsUpDown className="w-3 h-3 text-gray-400 inline ml-1 opacity-50" />;
@@ -66,7 +53,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 
 const PER_PAGE = 10;
 
-export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: TrackerProps) {
+export function Tracker({ bikes, columns, isAdmin, onAdd, onEdit, onDelete, onMarkFinished, onUpdateColumns }: TrackerProps) {
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -81,6 +68,7 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
   const [showAdd, setShowAdd] = useState(false);
   const [editBike, setEditBike] = useState<Bike | null>(null);
   const [finishBike, setFinishBike] = useState<Bike | null>(null);
+  const [showColumnManager, setShowColumnManager] = useState(false);
 
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +81,11 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
     if (showFilterPanel) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showFilterPanel]);
+
+  const displayColumns = useMemo(
+    () => columns.filter((c) => c.showInTracker).sort((a, b) => a.order - b.order),
+    [columns]
+  );
 
   const years = useMemo(
     () => [...new Set(bikes.map((b) => b.year).filter(Boolean))].sort((a, b) => b - a),
@@ -148,8 +141,12 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
   const sorted = useMemo(() => {
     if (!sortKey) return filtered;
     return [...filtered].sort((a, b) => {
-      const av = a[sortKey as keyof Bike];
-      const bv = b[sortKey as keyof Bike];
+      const av = sortKey in a
+        ? a[sortKey as keyof Bike]
+        : a.extraFields?.[sortKey] ?? '';
+      const bv = sortKey in b
+        ? b[sortKey as keyof Bike]
+        : b.extraFields?.[sortKey] ?? '';
       if (typeof av === 'number' && typeof bv === 'number')
         return sortDir === 'asc' ? av - bv : bv - av;
       const as = String(av ?? '').toLowerCase();
@@ -162,6 +159,8 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
   const paginated = sorted.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const activeFilterCount = [filterCat, filterStatus, filterSubStatus, filterExpiry, filterYear].filter(Boolean).length;
+
+  const sortedByLabel = displayColumns.find((c) => c.fieldKey === sortKey)?.label;
 
   return (
     <div className="p-6">
@@ -281,6 +280,17 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
             )}
           </div>
 
+          {/* Manage columns (admin only) */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowColumnManager(true)}
+              className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+              title="Manage columns"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             onClick={() => setShowAdd(true)}
             className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -296,9 +306,9 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
           {filtered.length} bike{filtered.length !== 1 ? 's' : ''} found
           {activeFilterCount > 0 && <span className="text-blue-500"> (filtered)</span>}
         </span>
-        {sortKey && (
+        {sortKey && sortedByLabel && (
           <span className="text-xs text-gray-400">
-            Sorted by <span className="text-gray-600 font-medium">{COLUMNS.find(c => c.sortKey === sortKey)?.label}</span> {sortDir === 'asc' ? '↑' : '↓'}
+            Sorted by <span className="text-gray-600 font-medium">{sortedByLabel}</span> {sortDir === 'asc' ? '↑' : '↓'}
           </span>
         )}
       </div>
@@ -309,28 +319,25 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
-                {COLUMNS.map((col) => (
+                {displayColumns.map((col) => (
                   <th
-                    key={col.label}
-                    onClick={() => col.sortKey && handleSort(col.sortKey)}
-                    className={cn(
-                      'text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none',
-                      col.sortKey ? 'cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors' : '',
-                      col.className
-                    )}
+                    key={col.id}
+                    onClick={() => handleSort(col.fieldKey)}
+                    className="text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors"
                   >
                     {col.label}
-                    {col.sortKey && (
-                      <SortIcon active={sortKey === col.sortKey} dir={sortDir} />
-                    )}
+                    <SortIcon active={sortKey === col.fieldKey} dir={sortDir} />
                   </th>
                 ))}
+                <th className="text-left px-4 py-3.5 font-semibold uppercase tracking-wider whitespace-nowrap select-none">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={displayColumns.length + 1} className="px-4 py-10 text-center text-gray-400">
                     No bikes found
                   </td>
                 </tr>
@@ -346,55 +353,11 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
                         expiryStatus === 'danger' ? 'bg-red-50' : expiryStatus === 'warning' ? 'bg-yellow-50' : ''
                       )}
                     >
-                      <td className="px-4 py-3 text-gray-500 text-xs">{bike.srl}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(bike.passingDate)}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">{bike.bikeNumber}</td>
-                      <td className="px-4 py-3">
-                        <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded">
-                          {bike.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 font-mono text-xs">{bike.fullReg}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{bike.newNumber || '—'}</td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs" title={bike.chassisNo}>
-                        {bike.chassisNo?.slice(0, 14)}{(bike.chassisNo?.length ?? 0) > 14 ? '…' : ''}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{bike.tcNo || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{bike.year}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <div className={cn(
-                            'w-2 h-2 rounded-full flex-shrink-0',
-                            expiryStatus === 'danger' ? 'bg-red-500 animate-pulse' :
-                            expiryStatus === 'warning' ? 'bg-orange-400' : 'bg-green-400'
-                          )} />
-                          <span className={cn(
-                            'font-medium text-xs',
-                            expiryStatus === 'danger' ? 'text-red-600' :
-                            expiryStatus === 'warning' ? 'text-orange-500' : 'text-gray-600'
-                          )}>
-                            {formatDate(bike.registrationExpiryDate)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-32 truncate" title={bike.renewalRemarks}>
-                        {bike.renewalRemarks || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{bike.subStatus || '—'}</td>
-                      <td className="px-4 py-3">
-                        {bike.pendingRemarks ? (
-                          <span className={cn(
-                            'text-xs px-2 py-1 rounded-full whitespace-nowrap',
-                            bike.pendingRemarks === 'ON HIRE' ? 'bg-green-100 text-green-700' :
-                            bike.pendingRemarks === 'REPLACEMENT READY TO RENT' ? 'bg-blue-100 text-blue-700' :
-                            'bg-yellow-100 text-yellow-800'
-                          )}>
-                            {bike.pendingRemarks}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
+                      {displayColumns.map((col) => (
+                        <td key={col.id} className="px-4 py-3">
+                          {renderCell(col, bike, 'tracker')}
+                        </td>
+                      ))}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button
@@ -438,18 +401,26 @@ export function Tracker({ bikes, onAdd, onEdit, onDelete, onMarkFinished }: Trac
         )}
       </div>
 
-      <AddBikeModal open={showAdd} onClose={() => setShowAdd(false)} onSubmit={onAdd} />
+      <AddBikeModal open={showAdd} onClose={() => setShowAdd(false)} onSubmit={onAdd} columns={columns} />
       <AddBikeModal
         open={!!editBike}
         onClose={() => setEditBike(null)}
         onSubmit={(data) => onEdit(editBike!.id!, data)}
         editBike={editBike}
+        columns={columns}
       />
       <MarkFinishedModal
         open={!!finishBike}
         bike={finishBike}
         onClose={() => setFinishBike(null)}
-        onSubmit={onMarkFinished}
+        columns={columns}
+        onSubmit={(id, df, ne, r, ef?) => onMarkFinished(id, df, ne, r, ef)}
+      />
+      <ColumnManagerModal
+        open={showColumnManager}
+        columns={columns}
+        onClose={() => setShowColumnManager(false)}
+        onSave={async (cols) => { await onUpdateColumns(cols); setShowColumnManager(false); }}
       />
     </div>
   );
