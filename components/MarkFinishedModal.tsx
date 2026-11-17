@@ -3,19 +3,28 @@
 import { useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
 import { Bike } from '@/types/bike';
+import { ColumnConfig } from '@/types/columnConfig';
 import { cn } from '@/lib/utils';
 
 interface MarkFinishedModalProps {
   open: boolean;
   bike: Bike | null;
   onClose: () => void;
-  onSubmit: (id: string, dateFinished: string, newExpiry: string, remarks: string) => Promise<void>;
+  columns: ColumnConfig[];
+  onSubmit: (
+    id: string,
+    dateFinished: string,
+    newExpiry: string,
+    remarks: string,
+    extraFields?: Record<string, string>
+  ) => Promise<void>;
 }
 
-export function MarkFinishedModal({ open, bike, onClose, onSubmit }: MarkFinishedModalProps) {
+export function MarkFinishedModal({ open, bike, onClose, columns, onSubmit }: MarkFinishedModalProps) {
   const [dateFinished, setDateFinished] = useState('');
   const [newExpiry, setNewExpiry] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [extraFields, setExtraFields] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   if (!open || !bike) return null;
@@ -24,10 +33,11 @@ export function MarkFinishedModal({ open, bike, onClose, onSubmit }: MarkFinishe
     e.preventDefault();
     setLoading(true);
     try {
-      await onSubmit(bike.id!, dateFinished, newExpiry, remarks);
+      await onSubmit(bike.id!, dateFinished, newExpiry, remarks, extraFields);
       setDateFinished('');
       setNewExpiry('');
       setRemarks('');
+      setExtraFields({});
       onClose();
     } finally {
       setLoading(false);
@@ -36,6 +46,10 @@ export function MarkFinishedModal({ open, bike, onClose, onSubmit }: MarkFinishe
 
   const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent';
   const labelCls = 'block text-xs font-semibold text-gray-600 mb-1.5';
+
+  const customColumns = columns
+    .filter((c) => !c.isCore && c.showInForm)
+    .sort((a, b) => a.order - b.order);
 
   return (
     <div
@@ -93,6 +107,22 @@ export function MarkFinishedModal({ open, bike, onClose, onSubmit }: MarkFinishe
               placeholder="Optional notes about renewal..."
             />
           </div>
+
+          {/* Custom columns */}
+          {customColumns.map((col) => (
+            <div key={col.id}>
+              <label className={labelCls}>{col.label}</label>
+              <input
+                type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'}
+                className={inputCls}
+                value={extraFields[col.fieldKey] ?? ''}
+                onChange={(e) =>
+                  setExtraFields((ef) => ({ ...ef, [col.fieldKey]: e.target.value }))
+                }
+                placeholder={col.label}
+              />
+            </div>
+          ))}
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
             <button

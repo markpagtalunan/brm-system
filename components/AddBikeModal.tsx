@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Bike, BikeFormData } from '@/types/bike';
+import { ColumnConfig } from '@/types/columnConfig';
 import { cn } from '@/lib/utils';
 
 interface AddBikeModalProps {
@@ -10,6 +11,7 @@ interface AddBikeModalProps {
   onClose: () => void;
   onSubmit: (data: BikeFormData) => Promise<void>;
   editBike?: Bike | null;
+  columns: ColumnConfig[];
 }
 
 const CATEGORIES = ['DXB1', 'DXB2', 'SHJ', 'AJM', 'RAK', 'FUJ', 'UAQ'];
@@ -37,15 +39,19 @@ const empty: BikeFormData = {
   newExpiryDate: '',
   pendingRemarks: '',
   status: 'tracker',
+  extraFields: {},
 };
 
-export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModalProps) {
+export function AddBikeModal({ open, onClose, onSubmit, editBike, columns }: AddBikeModalProps) {
   const [form, setForm] = useState<BikeFormData>(empty);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(editBike ? { ...editBike } as BikeFormData : empty);
+      setForm(editBike
+        ? { ...editBike, extraFields: editBike.extraFields ?? {} } as BikeFormData
+        : empty
+      );
     }
   }, [open, editBike]);
 
@@ -53,6 +59,11 @@ export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModal
 
   const set = (key: keyof BikeFormData, val: unknown) =>
     setForm((f) => ({ ...f, [key]: val }));
+
+  const isShown = (fieldKey: string) => {
+    const col = columns.find((c) => c.fieldKey === fieldKey);
+    return col ? col.showInForm : true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +78,10 @@ export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModal
 
   const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
   const labelCls = 'block text-xs font-semibold text-gray-600 mb-1.5';
+
+  const customColumns = columns
+    .filter((c) => !c.isCore && c.showInForm)
+    .sort((a, b) => a.order - b.order);
 
   return (
     <div
@@ -86,17 +101,21 @@ export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModal
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {/* SRL + Passing Date — SRL required, always shown */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>SRL <span className="text-red-400">*</span></label>
               <input type="number" required className={inputCls} value={form.srl || ''} onChange={(e) => set('srl', Number(e.target.value))} placeholder="e.g. 1" />
             </div>
-            <div>
-              <label className={labelCls}>Passing Date</label>
-              <input type="date" className={inputCls} value={form.passingDate} onChange={(e) => set('passingDate', e.target.value)} />
-            </div>
+            {isShown('passingDate') && (
+              <div>
+                <label className={labelCls}>Passing Date</label>
+                <input type="date" className={inputCls} value={form.passingDate} onChange={(e) => set('passingDate', e.target.value)} />
+              </div>
+            )}
           </div>
 
+          {/* Bike Number + Category — both required, always shown */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Bike Number <span className="text-red-400">*</span></label>
@@ -111,28 +130,35 @@ export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModal
             </div>
           </div>
 
+          {/* Full Reg preview — always shown (computed field, per spec) */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Full Registration</label>
               <input type="text" readOnly className={cn(inputCls, 'bg-gray-50 text-gray-400')} value={form.bikeNumber && form.category ? `${form.bikeNumber}${form.category}` : ''} placeholder="Auto-generated" />
             </div>
-            <div>
-              <label className={labelCls}>New Number</label>
-              <input type="text" className={inputCls} value={form.newNumber} onChange={(e) => set('newNumber', e.target.value)} placeholder="If changed" />
-            </div>
+            {isShown('newNumber') && (
+              <div>
+                <label className={labelCls}>New Number</label>
+                <input type="text" className={inputCls} value={form.newNumber} onChange={(e) => set('newNumber', e.target.value)} placeholder="If changed" />
+              </div>
+            )}
           </div>
 
+          {/* Chassis No. + TC No. — chassisNo required, always shown */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Chassis No. <span className="text-red-400">*</span></label>
               <input type="text" required className={cn(inputCls, 'font-mono')} value={form.chassisNo} onChange={(e) => set('chassisNo', e.target.value)} placeholder="e.g. MD2A11CX9RCB10294" />
             </div>
-            <div>
-              <label className={labelCls}>TC No.</label>
-              <input type="text" className={cn(inputCls, 'font-mono')} value={form.tcNo} onChange={(e) => set('tcNo', e.target.value)} placeholder="e.g. 50299925" />
-            </div>
+            {isShown('tcNo') && (
+              <div>
+                <label className={labelCls}>TC No.</label>
+                <input type="text" className={cn(inputCls, 'font-mono')} value={form.tcNo} onChange={(e) => set('tcNo', e.target.value)} placeholder="e.g. 50299925" />
+              </div>
+            )}
           </div>
 
+          {/* Year + Expiry Date — both required, always shown */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Year <span className="text-red-400">*</span></label>
@@ -146,23 +172,48 @@ export function AddBikeModal({ open, onClose, onSubmit, editBike }: AddBikeModal
             </div>
           </div>
 
-          <div>
-            <label className={labelCls}>Renewal Remarks</label>
-            <input type="text" className={inputCls} value={form.renewalRemarks} onChange={(e) => set('renewalRemarks', e.target.value)} placeholder="Optional notes..." />
-          </div>
+          {isShown('renewalRemarks') && (
+            <div>
+              <label className={labelCls}>Renewal Remarks</label>
+              <input type="text" className={inputCls} value={form.renewalRemarks} onChange={(e) => set('renewalRemarks', e.target.value)} placeholder="Optional notes..." />
+            </div>
+          )}
 
-          <div>
-            <label className={labelCls}>Sub Status</label>
-            <input type="text" className={inputCls} value={form.subStatus} onChange={(e) => set('subStatus', e.target.value)} placeholder="Optional sub status..." />
-          </div>
+          {isShown('subStatus') && (
+            <div>
+              <label className={labelCls}>Sub Status</label>
+              <input type="text" className={inputCls} value={form.subStatus} onChange={(e) => set('subStatus', e.target.value)} placeholder="Optional sub status..." />
+            </div>
+          )}
 
-          <div>
-            <label className={labelCls}>Pending Remarks</label>
-            <select className={cn(inputCls, 'text-gray-700')} value={form.pendingRemarks} onChange={(e) => set('pendingRemarks', e.target.value as BikeFormData['pendingRemarks'])}>
-              <option value="">Select status...</option>
-              {PENDING_REMARKS.map((r) => <option key={r}>{r}</option>)}
-            </select>
-          </div>
+          {isShown('pendingRemarks') && (
+            <div>
+              <label className={labelCls}>Pending Remarks</label>
+              <select className={cn(inputCls, 'text-gray-700')} value={form.pendingRemarks} onChange={(e) => set('pendingRemarks', e.target.value as BikeFormData['pendingRemarks'])}>
+                <option value="">Select status...</option>
+                {PENDING_REMARKS.map((r) => <option key={r}>{r}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Custom columns */}
+          {customColumns.map((col) => (
+            <div key={col.id}>
+              <label className={labelCls}>{col.label}</label>
+              <input
+                type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'}
+                className={inputCls}
+                value={form.extraFields?.[col.fieldKey] ?? ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    extraFields: { ...f.extraFields, [col.fieldKey]: e.target.value },
+                  }))
+                }
+                placeholder={col.label}
+              />
+            </div>
+          ))}
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">

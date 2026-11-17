@@ -12,17 +12,22 @@ import { LoginPage } from '@/components/LoginPage';
 import { getBikes, addBike, updateBike, deleteBike, markFinished } from '@/lib/bikes';
 import { onAuthChange } from '@/lib/auth';
 import { Bike, BikeFormData } from '@/types/bike';
+import { useColumnConfig } from '@/hooks/useColumnConfig';
+
+const ADMIN_EMAIL = 'geopagtalunan@gmail.com';
 
 type Page = 'dashboard' | 'tracker' | 'finished';
 
 export default function Home() {
-  const [authUser, setAuthUser] = useState<User | null | undefined>(undefined); // undefined = loading
+  const [authUser, setAuthUser] = useState<User | null | undefined>(undefined);
   const [page, setPage] = useState<Page>('dashboard');
   const [trackerBikes, setTrackerBikes] = useState<Bike[]>([]);
   const [finishedBikes, setFinishedBikes] = useState<Bike[]>([]);
   const [bikesLoading, setBikesLoading] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+
+  const { columns, updateColumns } = useColumnConfig();
 
   // Listen to Firebase auth state
   useEffect(() => {
@@ -46,6 +51,8 @@ export default function Home() {
     if (authUser) loadBikes();
   }, [authUser, loadBikes]);
 
+  const isAdmin = authUser?.email === ADMIN_EMAIL;
+
   const handleAdd = async (data: BikeFormData) => {
     await addBike(data);
     await loadBikes();
@@ -61,8 +68,14 @@ export default function Home() {
     await loadBikes();
   };
 
-  const handleMarkFinished = async (id: string, dateFinished: string, newExpiry: string, remarks: string) => {
-    await markFinished(id, dateFinished, newExpiry, remarks);
+  const handleMarkFinished = async (
+    id: string,
+    dateFinished: string,
+    newExpiry: string,
+    remarks: string,
+    extraFields?: Record<string, string>
+  ) => {
+    await markFinished(id, dateFinished, newExpiry, remarks, extraFields);
     await loadBikes();
   };
 
@@ -110,14 +123,23 @@ export default function Home() {
         {page === 'tracker' && (
           <Tracker
             bikes={trackerBikes}
+            columns={columns}
+            isAdmin={isAdmin}
             onAdd={handleAdd}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onMarkFinished={handleMarkFinished}
+            onUpdateColumns={updateColumns}
           />
         )}
         {page === 'finished' && (
-          <Finished bikes={finishedBikes} onDelete={handleDelete} />
+          <Finished
+            bikes={finishedBikes}
+            columns={columns}
+            isAdmin={isAdmin}
+            onDelete={handleDelete}
+            onUpdateColumns={updateColumns}
+          />
         )}
       </main>
 
